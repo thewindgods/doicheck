@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 
-let keyLocation   = open ~/.config/checkdoi/config.json
+let keyLocation   = open ~/.config/doicheck/config.json
 let wosApiKey     = $keyLocation | get wosKey
 let scopusApiKey  = $keyLocation | get scopusKey
 
