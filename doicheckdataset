@@ -1,0 +1,111 @@
+#!/usr/bin/env nu
+
+let keyLocation   = open ~/.config/checkdoi/config.json
+let wosApiKey     = $keyLocation | get wosKey
+let scopusApiKey  = $keyLocation | get scopusKey
+
+def main [user_input user_output] {
+let df = open -r $user_input | from csv --no-infer
+| where DOI != ""
+| insert ISI_FOUND      ""
+| insert ScopusId_FOUND ""
+| insert PMID_FOUND     ""
+| insert OpenAlex_Id    ""
+| insert OpenAlex_CNP   ""
+| select DOI ISI ScopusId PMID ISI_FOUND ScopusId_FOUND PMID_FOUND OpenAlex_Id OpenAlex_CNP PID Name Title Journal Year NBN
+
+let findingIds = $df
+| each {|row|
+    let doi = $row.DOI
+
+    let isiFound = if $row.ISI != "" {
+      ""
+    } else {
+      let url = $"https://wos-api.clarivate.com/api/wos?databaseId=WOS&usrQuery=DO=($doi)&count=1"
+      print $"fetching WoS ISI for ($doi)"
+      do -i { let result = http get --headers [ X-ApiKey $wosApiKey Accept application/json ] $url
+      let recs   = ($result | get Data.Records.records?)
+      if ($recs | is-empty) { "" } else {
+        $recs | get REC.UID.0 | str replace "WOS:" "" }
+      }
+    }
+
+    let scFound = if $row.ScopusId != "" {
+      ""
+    } else {
+      let url = $"https://api.elsevier.com/content/abstract/doi/($doi)?httpAccept=application/json&apiKey=($scopusApiKey)"
+      print $"fetching ScopusId for ($doi)"
+      do -i { let result = http get $url
+      $result | get abstracts-retrieval-response.coredata.eid? }
+    }
+
+    let pmFound = if $row.PMID != "" {
+      ""
+    } else {
+      let url = $"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=($doi)[DOI]&retmode=json"
+      print $"fetching PMID for ($doi)"
+      let result = http get $url
+      $result | get esearchresult.idlist.0?
+    }
+
+    let oaUrl = $"https://api.openalex.org/works?filter=doi:($doi)&per-page=1"
+    print $"fetching OpenAlex for ($doi)"
+    let oaRaw    = http get $oaUrl
+    let oaResults = ($oaRaw | get results?) 
+    let oaId  = if ($oaResults | is-empty) {
+      ""
+    } else {
+      ($oaResults | get 0.id) 
+      | str replace "https://openalex.org/" ""
+    }
+    let oaCnp = if ($oaResults | is-empty) {
+      ""
+    } else {
+      ($oaResults | get 0.citation_normalized_percentile.value?)
+    }
+    sleep 0.5sec
+    $row | merge {
+      ISI_FOUND:       $isiFound,
+      ScopusId_FOUND:  $scFound,
+      PMID_FOUND:      $pmFound,
+      OpenAlex_Id:     $oaId,
+      OpenAlex_CNP:    $oaCnp
+    }
+}
+
+let filteredList = (
+$findingIds
+| where ISI_FOUND != "" or ScopusId_FOUND != "" or PMID_FOUND != ""
+)
+
+match $user_output {
+  $it if ($it | str ends-with '.csv') => {
+    $filteredList | save -f $it
+    print $"Done: ($it) written."
+  }
+
+  $it if ($it | str ends-with '.tsv') => {
+    $filteredList | save -f $it
+    print $"Done: ($it) written."
+  }
+
+  $it if ($it | str ends-with '.json') => {
+    $filteredList | to json | save -f $it
+
+    print $"Done: ($it) written."
+  }
+
+  $it => {
+    let new = $"($it).csv"
+
+    $filteredList | save -f $new
+    print $"Done: ($new) written."
+  }
+}
+
+$filteredList
+| select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND OpenAlex_Id OpenAlex_CNP
+| sort-by OpenAlex_CNP 
+| reverse
+
+}

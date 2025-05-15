@@ -1,0 +1,45 @@
+#!/usr/bin/env nu
+
+let keyLocation   = open ~/.config/checkdoi/config.json
+let wosApiKey     = $keyLocation | get wosKey
+let scopusApiKey  = $keyLocation | get scopusKey
+
+def main [user_input] {
+let df = [
+    {
+        DOI: $user_input
+        ISI_FOUND: ""
+        ScopusId_FOUND: ""
+        PMID_FOUND: ""
+    }
+]
+mut findingIds = $df
+| update DOI { |row| $row.DOI }
+| update ISI_FOUND {|row|
+    let encodedDoi = ($row.DOI)
+    let url = $"https://wos-api.clarivate.com/api/wos?databaseId=WOS&usrQuery=DO=($encodedDoi)&count=1"
+    print $"fetching WoS ISI for ($encodedDoi)"
+    do -i { let result = http get --headers [ X-ApiKey $wosApiKey Accept application/json ] $url
+    let recList = ($result | get Data.Records.records?)
+    if ($recList | is-empty) { "" } else { 
+    $recList | get REC.UID.0 | str replace "WOS:" "" }
+    }
+}
+| update ScopusId_FOUND {|row|
+    let encodedDoi = ($row.DOI)
+    let url = $"https://api.elsevier.com/content/abstract/doi/($encodedDoi)?httpAccept=application/json&apiKey=($scopusApiKey)"
+    print $"fetching ScopusId for ($encodedDoi)"
+    do -i { let result = http get $url
+    $result | get abstracts-retrieval-response.coredata.eid? }
+}
+| update PMID_FOUND {|row|
+    let encodedDoi = ($row.DOI)
+    let url = $"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=($encodedDoi)[DOI]&retmode=json"
+    print $"fetching PMID for ($encodedDoi)"
+    let result = http get $url
+    $result | get esearchresult.idlist.0?
+}
+
+print "Done: found_identifiers.csv written."
+$findingIds | select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND
+}
