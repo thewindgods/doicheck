@@ -32,14 +32,22 @@ mut findingIds = $df
     do -i { let result = http get $url
     $result | get abstracts-retrieval-response.coredata.eid? }
 }
+    #| update PMID_FOUND {|row|
+    #    let encodedDoi = ($row.DOI)
+    #    let url = $"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=($encodedDoi)[DOI]&retmode=json"
+    #    print $"fetching PMID for ($encodedDoi)"
+    #    let result = http get $url
+    #    $result | get esearchresult.idlist.0?
+    #}
 | update PMID_FOUND {|row|
     let encodedDoi = ($row.DOI)
-    let url = $"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=($encodedDoi)[DOI]&retmode=json"
+    let url = $"https://api.openalex.org/works?filter=doi:($encodedDoi)&per-page=1"
     print $"fetching PMID for ($encodedDoi)"
-    let result = http get $url
-    $result | get esearchresult.idlist.0?
+    do -i { let result = http get $url
+    $result.results.ids.pmid.0? | str replace "https://pubmed.ncbi.nlm.nih.gov/" "" }
 }
 
 print "Done: found_identifiers.csv written."
 $findingIds | select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND
 }
+
