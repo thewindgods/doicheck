@@ -47,7 +47,6 @@ mut findingIds = $df
     $result.results.ids.pmid.0? | str replace "https://pubmed.ncbi.nlm.nih.gov/" "" }
 }
 
-print "Done: found_identifiers.csv written."
 $findingIds | select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND
 }
 
