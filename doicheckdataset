@@ -7,12 +7,13 @@ let scopusApiKey  = $keyLocation | get scopusKey
 def main [user_input user_output] {
 let df = open -r $user_input | from csv --no-infer
 | where DOI != ""
-| insert ISI_FOUND      ""
-| insert ScopusId_FOUND ""
-| insert PMID_FOUND     ""
-| insert OpenAlex_Id    ""
-| insert OpenAlex_CNP   ""
-| select DOI ISI ScopusId PMID ISI_FOUND ScopusId_FOUND PMID_FOUND OpenAlex_Id OpenAlex_CNP PID Name Title Journal Year NBN
+| insert ISI_FOUND        ""
+| insert ScopusId_FOUND   ""
+| insert PMID_FOUND       ""
+| insert OpenAlex_Id      ""
+| insert OpenAlex_OA_Type ""
+| insert OpenAlex_CNP     ""
+| select DOI ISI ScopusId PMID ISI_FOUND ScopusId_FOUND PMID_FOUND OpenAlex_Id OpenAlex_OA_Type OpenAlex_CNP PID Name Title Journal Year NBN
 
 let findingIds = $df
 | each {|row|
@@ -66,7 +67,12 @@ let findingIds = $df
     let pmFound = if ($oaResults | is-empty) {
       ""
     } else {
-      do -i {$oaResults.0.ids.pmid? | str replace "https://pubmed.ncbi.nlm.nih.gov/" "" }
+      do -i {$oaResults.0.ids.pmid? | str replace "https://pubmed.ncbi.nlm.nih.gov/" ""}
+    }
+    let oaTypeFound = if ($oaResults | is-empty) {
+      ""
+    } else {
+      do -i {$oaResults.0.open_access.oa_status?}
     }
     sleep 0.5sec
     $row | merge {
@@ -74,6 +80,7 @@ let findingIds = $df
       ScopusId_FOUND:  $scFound,
       PMID_FOUND:      $pmFound,
       OpenAlex_Id:     $oaId,
+      OpenAlex_OA_Type: $oaTypeFound,
       OpenAlex_CNP:    $oaCnp
     }
 }
@@ -109,7 +116,7 @@ match $user_output {
 }
 
 $filteredList
-| select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND OpenAlex_Id OpenAlex_CNP
+| select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND OpenAlex_Id OpenAlex_OA_Type OpenAlex_CNP
 | sort-by OpenAlex_CNP 
 | reverse
 

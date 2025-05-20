@@ -11,6 +11,7 @@ let df = [
         ISI_FOUND: ""
         ScopusId_FOUND: ""
         PMID_FOUND: ""
+        OpenAlex_OA_Type: ""
     }
 ]
 mut findingIds = $df
@@ -39,14 +40,21 @@ mut findingIds = $df
     #    let result = http get $url
     #    $result | get esearchresult.idlist.0?
     #}
-| update PMID_FOUND {|row|
+| each {|row|
     let encodedDoi = ($row.DOI)
     let url = $"https://api.openalex.org/works?filter=doi:($encodedDoi)&per-page=1"
     print $"fetching PMID for ($encodedDoi)"
     do -i { let result = http get $url
-    $result.results.ids.pmid.0? | str replace "https://pubmed.ncbi.nlm.nih.gov/" "" }
+    let pmid = $result.results.ids.pmid.0? | str replace "https://pubmed.ncbi.nlm.nih.gov/" "" 
+    let oaType = $result.results.open_access.oa_status.0? 
+    $row | merge {
+    PMID_FOUND: $pmid
+    OpenAlex_OA_Type: $oaType
+    }
+    }
 }
 
-$findingIds | select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND
+print "Done: found_identifiers.csv written."
+$findingIds | select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND OpenAlex_OA_Type
 }
 
