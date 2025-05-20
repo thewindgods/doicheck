@@ -40,15 +40,6 @@ let findingIds = $df
       $result | get abstracts-retrieval-response.coredata.eid? }
     }
 
-    #let pmFound = if $row.PMID != "" {
-    #  ""
-    #} else {
-    #  let url = $"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=($doi)[DOI]&retmode=json"
-    #  print $"fetching PMID for ($doi)"
-    #  let result = http get $url
-    #  $result | get esearchresult.idlist.0?
-    #}
-
     let oaUrl = $"https://api.openalex.org/works?filter=doi:($doi)&per-page=1"
     print $"fetching OpenAlex and Pubmed data for ($doi)"
     let oaRaw    = http get $oaUrl

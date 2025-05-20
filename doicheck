@@ -14,47 +14,50 @@ let df = [
         OpenAlex_OA_Type: ""
     }
 ]
-mut findingIds = $df
-| update DOI { |row| $row.DOI }
-| update ISI_FOUND {|row|
-    let encodedDoi = ($row.DOI)
-    let url = $"https://wos-api.clarivate.com/api/wos?databaseId=WOS&usrQuery=DO=($encodedDoi)&count=1"
-    print $"fetching WoS ISI for ($encodedDoi)"
-    do -i { let result = http get --headers [ X-ApiKey $wosApiKey Accept application/json ] $url
-    let recList = ($result | get Data.Records.records?)
-    if ($recList | is-empty) { "" } else { 
-    $recList | get REC.UID.0 | str replace "WOS:" "" }
-    }
-}
-| update ScopusId_FOUND {|row|
-    let encodedDoi = ($row.DOI)
-    let url = $"https://api.elsevier.com/content/abstract/doi/($encodedDoi)?httpAccept=application/json&apiKey=($scopusApiKey)"
-    print $"fetching ScopusId for ($encodedDoi)"
-    do -i { let result = http get $url
-    $result | get abstracts-retrieval-response.coredata.eid? }
-}
-    #| update PMID_FOUND {|row|
-    #    let encodedDoi = ($row.DOI)
-    #    let url = $"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=($encodedDoi)[DOI]&retmode=json"
-    #    print $"fetching PMID for ($encodedDoi)"
-    #    let result = http get $url
-    #    $result | get esearchresult.idlist.0?
-    #}
+
+let findingIds = $df
 | each {|row|
-    let encodedDoi = ($row.DOI)
-    let url = $"https://api.openalex.org/works?filter=doi:($encodedDoi)&per-page=1"
-    print $"fetching PMID for ($encodedDoi)"
-    do -i { let result = http get $url
-    let pmid = $result.results.ids.pmid.0? | str replace "https://pubmed.ncbi.nlm.nih.gov/" "" 
-    let oaType = $result.results.open_access.oa_status.0? 
+    let doi = $row.DOI
+
+    let isiUrl = $"https://wos-api.clarivate.com/api/wos?databaseId=WOS&usrQuery=DO=($doi)&count=1"
+    print $"fetching WoS ISI for ($doi)"
+    let isiFound = do -i { let result = http get --headers [ X-ApiKey $wosApiKey Accept application/json ] $isiUrl
+    let recs   = ($result | get Data.Records.records?)
+    if ($recs | is-empty) { "" } else {
+    $recs | get REC.UID.0 | str replace "WOS:" "" }
+    }
+
+    let scUrl = $"https://api.elsevier.com/content/abstract/doi/($doi)?httpAccept=application/json&apiKey=($scopusApiKey)"
+    print $"fetching ScopusId for ($doi)"
+    let scFound = do -i { let result = http get $scUrl
+    $result | get abstracts-retrieval-response.coredata.eid? 
+    }
+
+    let oaUrl = $"https://api.openalex.org/works?filter=doi:($doi)&per-page=1"
+    print $"fetching OpenAlex and Pubmed data for ($doi)"
+    let oaRaw    = http get $oaUrl
+    let oaResults = ($oaRaw | get results?) 
+    let pmFound = if ($oaResults | is-empty) {
+      ""
+    } else {
+      do -i {$oaResults.0.ids.pmid? | str replace "https://pubmed.ncbi.nlm.nih.gov/" ""}
+    }
+    let oaTypeFound = if ($oaResults | is-empty) {
+      ""
+    } else {
+      do -i {$oaResults.0.open_access.oa_status?}
+    }
+    sleep 0.5sec
     $row | merge {
-    PMID_FOUND: $pmid
-    OpenAlex_OA_Type: $oaType
-    }
+      ISI_FOUND:       $isiFound,
+      ScopusId_FOUND:  $scFound,
+      PMID_FOUND:      $pmFound,
+      OpenAlex_OA_Type: $oaTypeFound,
     }
 }
 
-print "Done: found_identifiers.csv written."
-$findingIds | select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND OpenAlex_OA_Type
-}
 
+$findingIds
+| select DOI ISI_FOUND ScopusId_FOUND PMID_FOUND OpenAlex_OA_Type
+
+}
